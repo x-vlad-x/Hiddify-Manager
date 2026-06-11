@@ -68,24 +68,33 @@ function get_cert() {
         #     flags="--listen-v6"
         # fi
         
+        local issue_err=1
         if isipv4 "$DOMAIN"; then
             acmecmd -d $DOMAIN --server letsencrypt --certificate-profile shortlived --days 6 
+            issue_err=$?
         elif isipv6 "$DOMAIN"; then
             acmecmd -d [$DOMAIN] --server letsencrypt --certificate-profile shortlived --days 6 --listen-v6
+            issue_err=$?
         else
             acmecmd -d "$DOMAIN" --server letsencrypt
-            if [ "$?" -ne 0 ] && is_ok_domain_zerossl "$DOMAIN"; then
+            issue_err=$?
+            if [ "$issue_err" -ne 0 ] && is_ok_domain_zerossl "$DOMAIN"; then
                 acmecmd -d "$DOMAIN" --server zerossl
+                issue_err=$?
             fi
 
         fi
-        
-        acme.sh --installcert -d $DOMAIN \
-            --fullchainpath $ssl_cert_path/$DOMAIN.crt \
-            --keypath $ssl_cert_path/$DOMAIN.crt.key \
-            --reloadcmd "echo success"
-        
-        err=$?
+
+        if [[ "$issue_err" -eq 0 ]]; then
+            acme.sh --installcert -d $DOMAIN \
+                --fullchainpath $ssl_cert_path/$DOMAIN.crt \
+                --keypath $ssl_cert_path/$DOMAIN.crt.key \
+                --reloadcmd "echo success"
+
+            err=$?
+        else
+            err=$issue_err
+        fi
         
     else
         err=1

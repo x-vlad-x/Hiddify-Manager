@@ -73,15 +73,13 @@ function main() {
         runsh run.sh common &
         
         update_progress "${PROGRESS_ACTION}" "Nginx" 15
-        install_run nginx &
-        
-        (
-            update_progress "${PROGRESS_ACTION}" "Haproxy for Spliting Traffic" 20
-            install_run haproxy
-        
-            update_progress "${PROGRESS_ACTION}" "Getting Certificates" 30
-            install_run acme.sh 
-        )&
+        install_run nginx
+
+        update_progress "${PROGRESS_ACTION}" "Haproxy for Spliting Traffic" 20
+        install_run haproxy
+
+        update_progress "${PROGRESS_ACTION}" "Getting Certificates" 30
+        install_run acme.sh &
         
         update_progress "${PROGRESS_ACTION}" "Personal SpeedTest" 35
         install_run other/speedtest $(hconfig "speed_test") &

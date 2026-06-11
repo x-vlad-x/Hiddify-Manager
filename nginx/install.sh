@@ -35,4 +35,5 @@ rm /etc/nginx/conf.d/speedtest.conf >/dev/null 2>&1
 
 mkdir -p run
 ln -sf $(pwd)/hiddify-nginx.service /etc/systemd/system/hiddify-nginx.service
+systemctl daemon-reload
 systemctl enable hiddify-nginx.service
