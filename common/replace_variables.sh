@@ -1,6 +1,7 @@
 cd $(dirname -- "$0")
 source ./utils.sh
 activate_python_venv
+reload_all_configs >/dev/null
 
 domains=$(cat ../current.json | jq -r '.domains[] | .domain' | tr '\n' ' ')
 
