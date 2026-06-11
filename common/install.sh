@@ -79,6 +79,7 @@ if [ -f /etc/cron.d/hiddify_daily_memory_release ]; then
   mv /etc/cron.d/hiddify_daily_memory_release /etc/cron.d/hiddify_daily
 fi
 echo "@daily root /opt/hiddify-manager/common/daily_actions.sh >> /opt/hiddify-manager/log/system/daily_actions.log 2>&1" >/etc/cron.d/hiddify_daily
+echo "* * * * * root /opt/hiddify-manager/common/sync_live_config.sh >> /opt/hiddify-manager/log/system/config_sync.log 2>&1" >/etc/cron.d/hiddify_config_sync
 service cron reload
 
 if [ "${MODE}" != "docker" ];then
