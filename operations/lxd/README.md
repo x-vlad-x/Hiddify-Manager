@@ -4,6 +4,8 @@ Run the following commands:
 git clone https://github.com/hiddify/Hiddify-Manager.git
 cd Hiddify-Manager/operations/lxd
 bash setup_lxc_container.sh
+# Or choose an explicit Ubuntu image:
+# bash setup_lxc_container.sh --ubuntu 24.04
 # After configuring your Hiddify Manager using the printed links:
 bash utils/lxc_ports_to_host.sh
 ```
@@ -23,8 +25,9 @@ First LXD must be installed. Our script `setup_lxc_container.sh` can install LXD
 
 But if you don't use the distros above, you can still install LXD manually and keep using our scripts.
 
-### Step 2: Setting Up an Ubuntu 22.04 LXC Container
+### Step 2: Setting Up an Ubuntu LXC Container
 After `setup_lxc_container.sh` installs LXD, it will automatically set up the container and install Hiddify Manager in it.
+The default image is Ubuntu 24.04. You can also select `22.04` or `26.04` explicitly with `--ubuntu`.
 The ports 80 and 443 on your host OS must be available for binding, otherwise your Hiddify Manager installation won't have a valid SSL certificate.
 
 ### Step 3: Configuring Hiddify Manager

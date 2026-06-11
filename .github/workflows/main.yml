@@ -1,39 +1,51 @@
-# This is a basic workflow to help you get started with Actions
-
 name: CI
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the main branch
-  # push:
-  #   branches: [ main ]
-  # pull_request:
-  #   branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
+  pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  test:
+  ubuntu-preflight:
+    name: Ubuntu preflight (${{ matrix.ubuntu }})
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        ubuntu: ["22.04", "24.04", "26.04"]
+    runs-on: ubuntu-${{ matrix.ubuntu }}
     steps:
-      - uses: actions/checkout@v2
-      - name: Install project
+      - uses: actions/checkout@v4
+
+      - name: Verify detected Ubuntu release
+        shell: bash
         run: |
-          sudo mkdir /opt/hiddify-manager
-          sudo cp -r * /opt/hiddify-manager/
-          cd /opt/hiddify-manager/
-          sudo bash install.sh
-      - name: check working
-        env:
-          SQLALCHEMY_DATABASE_URI: sqlite:////opt/hiddify-manager/hiddify-panel/database.db
-        run: |
-          cd /opt/hiddify-manager/
-          grep -q -e '-----Finished!-----' log/system/0-install.log 
           source common/utils.sh
-          hiddify-panel-cli all-configs
+          hiddify_detect_os
+          test "${HIDDIFY_OS_ID}" = "ubuntu"
+          test "${HIDDIFY_OS_VERSION_ID}" = "${{ matrix.ubuntu }}"
+          test -n "${HIDDIFY_OS_VERSION_CODENAME}"
+
+      - name: Run installer preflight
+        run: sudo bash install.sh --preflight
+
+  docker-smoke:
+    name: Docker smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t hiddify-manager:test .
+
+      - name: Smoke check image
+        run: |
+          docker run --rm --entrypoint bash hiddify-manager:test -lc '
+            source /opt/hiddify-manager/common/utils.sh
+            checkOS
+            hiddify_support_matrix
+          '

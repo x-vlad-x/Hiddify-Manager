@@ -145,7 +145,15 @@ At the same time, the proposed solution is resistant to detection by the interne
 
 
 <details  markdown="1"> <summary>Supported operating systems</summary>
-Hiddify-Manager has been tested on Ubuntu 22.04. Ubuntu arm64 or amd64
+Ubuntu arm64 and amd64 are supported with the following validation tiers:
+
+| Ubuntu release | Status |
+| --- | --- |
+| 22.04 | Maintained |
+| 24.04 | Supported |
+| 26.04 | Experimental |
+
+`26.04` stays experimental until repeated end-to-end validation passes in CI.
 </details>
 
 

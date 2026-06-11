@@ -18,6 +18,11 @@ if [ "$(id -u)" -ne 0 ]; then
     echo 'This script must be run by root' >&2
     exit 1
 fi
+
+function run_preflight() {
+    hiddify_run_ubuntu_preflight
+}
+
 function main() {
     update_progress "Please wait..." "We are going to install Hiddify..." 0
     export ERROR=0
@@ -196,15 +201,24 @@ function runsh() {
     popd >>/dev/null
 }
 
-if [[ " $@ " == *" --no-gui "* ]]; then
+if [[ " $@ " == *" --preflight "* ]] && [[ " $@ " != *" --no-gui "* ]]; then
+    set -- "${@/--preflight/}"
+    run_preflight
+    error_code=$?
+elif [[ " $@ " == *" --no-gui "* ]]; then
     set -- "${@/--no-gui/}"
     export MODE="$1"
+    if [[ " $@ " == *" --preflight "* ]]; then
+        set -- "${@/--preflight/}"
+        run_preflight
+        exit $?
+    fi
     set_lock $NAME
     if [[ " $@ " == *" --no-log "* ]]; then
         set -- "${@/--no-log/}"
         main
     else
-        main |& tee $LOG_FILE
+        main 2>&1 | tee $LOG_FILE
     fi
     error_code=$?
     remove_lock $NAME
@@ -216,7 +230,7 @@ else
         msg_with_hiddify "Installation Failed! $error_code"
     else
         msg_with_hiddify "The installation has successfully completed."
-        check_hiddify_panel $@ |& tee -a $LOG_FILE
+        check_hiddify_panel "$@" 2>&1 | tee -a $LOG_FILE
     fi
 fi
 

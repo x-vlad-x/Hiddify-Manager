@@ -13,7 +13,7 @@ jobs:
     permissions: write-all
     timeout-minutes: 10
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: true
       matrix:
@@ -71,7 +71,7 @@ jobs:
           retention-days: 1
   merge:
     permissions: write-all
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - make-upload-docker
     env:

@@ -8,7 +8,8 @@ fi
 systemctl disable --now redis-server >/dev/null 2>&1 || true
 pkill -9 redis-server >/dev/null 2>&1 || true
 
-chown -R redis:redis .
+mkdir -p /opt/hiddify-manager/log/system
+id -u redis >/dev/null 2>&1 && chown -R redis:redis .
 chmod 600 redis.conf
 
 # Ensure a password exists in repo config before starting any service
@@ -25,7 +26,7 @@ systemctl enable --now hiddify-redis
 
 # Ensure logging path exists/owned
 touch /opt/hiddify-manager/log/system/redis-server.log
-chown redis:redis /opt/hiddify-manager/log/system/redis-server.log
+id -u redis >/dev/null 2>&1 && chown redis:redis /opt/hiddify-manager/log/system/redis-server.log
 
 
 

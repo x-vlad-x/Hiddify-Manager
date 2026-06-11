@@ -119,7 +119,15 @@ Hiddify 的名称是 Hidden （隐藏） 和 Simplify （简化） 的合并而�
 <details markdown="1"><summary><h3>其他出色的功能</h3>（点击这里）</summary>
 
 <details  markdown="1"> <summary>支持的操作系统</summary>
-  Hiddify-Manager 已经在 Ubuntu 22.04 上进行了测试。支持 Ubuntu arm64 和 amd64 。
+  Ubuntu arm64 和 amd64 的支持状态如下：
+
+| Ubuntu 版本 | 状态 |
+| --- | --- |
+| 22.04 | 持续维护 |
+| 24.04 | 正式支持 |
+| 26.04 | 实验性支持 |
+
+  `26.04` 会在 CI 中通过稳定的端到端验证后再升级为正式支持。
 </details>
 
 <details  markdown="1"> <summary>网速检测</summary>

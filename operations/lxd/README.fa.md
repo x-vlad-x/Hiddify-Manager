@@ -6,6 +6,8 @@ bash
 git clone https://github.com/hiddify/Hiddify-Manager.git
 cd Hiddify-Manager/operations/lxd
 bash setup_lxc_container.sh
+# یا با نسخه صریح اوبونتو:
+# bash setup_lxc_container.sh --ubuntu 24.04
 # پس از پیکربندی Hiddify Manager خود با استفاده از لینک‌های چاپ‌شده:
 bash utils/lxc_ports_to_host.sh
 ```
@@ -26,8 +28,9 @@ bash utils/lxc_ports_to_host.sh
 
 اما اگر از توزیع‌های فوق استفاده نمی‌کنید، همچنان می‌توانید LXD را به صورت دستی نصب کرده و از اسکریپت‌های ما استفاده کنید.
 
-### مرحله ۲: راه‌اندازی کانتینر LXC با سیستم‌عامل Ubuntu 22.04
+### مرحله ۲: راه‌اندازی کانتینر LXC با سیستم‌عامل Ubuntu
 پس از اینکه setup_lxc_container.sh، LXD را نصب کرد، به صورت خودکار کانتینر را راه‌اندازی کرده و Hiddify Manager را در آن نصب می‌کند.
+تصویر پیش‌فرض Ubuntu 24.04 است. همچنین می‌توانید با آرگومان `--ubuntu` نسخه‌های `22.04` یا `26.04` را صریحاً انتخاب کنید.
 پورت‌های 80 و 443 در سیستم‌عامل میزبان شما باید برای اتصال در دسترس باشند، در غیر این صورت نصب Hiddify Manager شما گواهی SSL معتبر نخواهد داشت.
 
 ### مرحله ۳: پیکربندی Hiddify Manager

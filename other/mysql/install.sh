@@ -9,8 +9,8 @@ if [ ! -f "mysql_pass" ]; then
     random_password=$(< /dev/urandom tr -dc 'a-zA-Z0-9' | head -c49; echo)
     echo "$random_password" >"mysql_pass"
     chmod 600 "mysql_pass"
-    # Secure MariaDB installation
-    sudo mysql_secure_installation <<EOF
+    if command -v mysql_secure_installation >/dev/null 2>&1; then
+        sudo mysql_secure_installation <<EOF
 y
 $random_password
 $random_password
@@ -19,18 +19,19 @@ y
 y
 y
 EOF
+    fi
 
     # Disable external access
     sudo sed -i 's/bind-address/#bind-address/' /etc/mysql/mariadb.conf.d/50-server.cnf
     sudo systemctl restart mariadb
 
     # Create user with localhost access
-    sudo mysql -u root -f <<MYSQL_SCRIPT
-CREATE USER 'hiddifypanel'@'localhost' IDENTIFIED BY '$random_password';
+    sudo mysql -u root <<MYSQL_SCRIPT
+CREATE USER IF NOT EXISTS 'hiddifypanel'@'localhost' IDENTIFIED BY '$random_password';
 ALTER USER 'hiddifypanel'@'localhost' IDENTIFIED BY '$random_password';
 
 GRANT ALL PRIVILEGES ON *.* TO 'hiddifypanel'@'localhost';
-CREATE DATABASE hiddifypanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;;
+CREATE DATABASE IF NOT EXISTS hiddifypanel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 GRANT ALL PRIVILEGES ON hiddifypanel.* TO 'hiddifypanel'@'localhost';
 FLUSH PRIVILEGES;
 MYSQL_SCRIPT

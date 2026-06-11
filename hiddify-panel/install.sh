@@ -1,6 +1,30 @@
 source ../common/utils.sh
+
+apply_hiddifypanel_runtime_compat_patches() {
+    local crypto_file
+
+    crypto_file="$(hiddifypanel_path)/hutils/crypto.py"
+    if [ ! -f "$crypto_file" ]; then
+        warning "Skipping hiddifypanel runtime compatibility patch because $crypto_file was not found."
+        return 0
+    fi
+
+    if grep -Fq '"dsa", "ecdsa", "ed25519", "rsa"' "$crypto_file"; then
+        sed -i 's/"dsa", "ecdsa", "ed25519", "rsa"/"ecdsa", "ed25519", "rsa"/' "$crypto_file"
+        warning "Patched hiddifypanel SSH host key generation to skip deprecated DSA keys."
+    fi
+}
+
 activate_python_venv
 install_package wireguard libev-dev libevdev2 default-libmysqlclient-dev build-essential pkg-config ssh
+mkdir -p ../log/system
+
+# Fresh installs need the panel package and template deps before config rendering.
+install_pypi_package pip setuptools wheel jinja2 json5
+if ! is_installed_pypi_package hiddifypanel; then
+    install_pypi_package hiddifypanel
+fi
+apply_hiddifypanel_runtime_compat_patches
 
 useradd -m hiddify-panel -s /bin/bash >/dev/null 2>&1
 usermod -aG hiddify-common hiddify-panel
@@ -30,6 +54,7 @@ if [ -n "$HIDDIFY_PANLE_SOURCE_DIR" ]; then
     echo "NOTICE: building hiddifypanel package from source..."
     echo "NOTICE: the source dir $HIDDIFY_PANLE_SOURCE_DIR"
     uv pip install -e "$HIDDIFY_PANLE_SOURCE_DIR"
+    apply_hiddifypanel_runtime_compat_patches
 fi
 
 rm -rf /etc/cron.d/{hiddify_usage_update,hiddify_auto_backup}

@@ -23,6 +23,12 @@ if [ ! -f /opt/hiddify-manager/install.sh ]; then
     rm -rf /opt/hiddify-manager
 fi
 
+if [[ " $@ " == *" --preflight "* ]]; then
+    set -- "${@/--preflight/}"
+    hiddify_run_ubuntu_preflight
+    exit $?
+fi
+
 
 
 if [ ! -d "/opt/hiddify-manager/" ] && [ -d "/opt/hiddify-config/" ]; then
@@ -358,7 +364,7 @@ if [[ " $@ " == *" --no-gui "* || "$(get_installed_panel_version) " == "8."* || 
         install_panel "$@"
         error_code=$?
     else
-        install_panel "$@" |& tee $LOG_FILE
+        install_panel "$@" 2>&1 | tee $LOG_FILE
         error_code="${PIPESTATUS[0]}"
     fi
     
@@ -373,7 +379,7 @@ else
         msg_with_hiddify "Installation Failed! code=$error_code"
     else
         msg_with_hiddify "The installation has successfully completed."
-        check_hiddify_panel $@ |& tee -a $LOG_FILE
+        check_hiddify_panel "$@" 2>&1 | tee -a $LOG_FILE
         read -p "Press any key to go  to menu" -n 1 key
     fi
     bash /opt/hiddify-manager/menu.sh

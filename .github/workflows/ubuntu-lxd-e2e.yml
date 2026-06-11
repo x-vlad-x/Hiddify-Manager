@@ -1,0 +1,73 @@
+name: Ubuntu LXD E2E
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lxd-e2e:
+    name: LXD end-to-end (${{ matrix.ubuntu }})
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["22.04", "24.04", "26.04"]
+    runs-on: ubuntu-24.04
+    env:
+      LXC_CONTAINER_NAME: hiddify-e2e-${{ matrix.ubuntu }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Hiddify inside LXD
+        run: sudo bash operations/lxd/setup_lxc_container.sh --ubuntu "${{ matrix.ubuntu }}" --container-name "${LXC_CONTAINER_NAME}"
+
+      - name: Verify core services
+        run: |
+          for service in hiddify-panel hiddify-nginx hiddify-haproxy hiddify-xray hiddify-singbox; do
+            sudo lxc exec "${LXC_CONTAINER_NAME}" -- systemctl is-active --quiet "${service}"
+          done
+
+      - name: Verify panel config and listeners
+        run: |
+          sudo lxc exec "${LXC_CONTAINER_NAME}" -- bash -lc '
+            cd /opt/hiddify-manager
+            source common/utils.sh
+            hiddify-panel-cli all-configs >/tmp/all-configs.json
+            ss -lntup | grep -Eq "[:.]80\\b"
+            ss -lntup | grep -Eq "[:.]443\\b"
+          '
+
+      - name: Collect service logs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          sudo lxc exec "${LXC_CONTAINER_NAME}" -- bash -lc '
+            systemctl status hiddify-panel --no-pager > /tmp/hiddify-panel.status
+            systemctl status hiddify-nginx --no-pager > /tmp/hiddify-nginx.status
+            systemctl status hiddify-haproxy --no-pager > /tmp/hiddify-haproxy.status
+            systemctl status hiddify-xray --no-pager > /tmp/hiddify-xray.status
+            systemctl status hiddify-singbox --no-pager > /tmp/hiddify-singbox.status
+            tar czf /tmp/hiddify-logs.tgz \
+              /opt/hiddify-manager/log/system \
+              /tmp/hiddify-panel.status \
+              /tmp/hiddify-nginx.status \
+              /tmp/hiddify-haproxy.status \
+              /tmp/hiddify-xray.status \
+              /tmp/hiddify-singbox.status
+          '
+          sudo lxc file pull "${LXC_CONTAINER_NAME}/tmp/hiddify-logs.tgz" "artifacts/hiddify-${{ matrix.ubuntu }}-logs.tgz"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hiddify-lxd-${{ matrix.ubuntu }}
+          path: artifacts/hiddify-${{ matrix.ubuntu }}-logs.tgz
+          if-no-files-found: error
+
+      - name: Cleanup container
+        if: always()
+        run: sudo lxc delete "${LXC_CONTAINER_NAME}" --force

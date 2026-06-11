@@ -516,38 +516,218 @@ function hiddify-panel-cli() {
   hiddify-panel-run "python3 -m hiddifypanel $*"
 }
 # region installer utils
+function hiddify_detect_os() {
+    if [[ ! -f "/etc/os-release" ]]; then
+        error "Unable to determine distribution."
+        return 1
+    fi
+
+    source /etc/os-release
+
+    export HIDDIFY_OS_ID="${ID:-unknown}"
+    export HIDDIFY_OS_NAME="${NAME:-unknown}"
+    export HIDDIFY_OS_VERSION_ID="${VERSION_ID:-unknown}"
+    export HIDDIFY_OS_VERSION_CODENAME="${VERSION_CODENAME:-${UBUNTU_CODENAME:-unknown}}"
+    export HIDDIFY_OS_MAJOR_VERSION="$(echo "${HIDDIFY_OS_VERSION_ID}" | cut -d '.' -f 1)"
+    export HIDDIFY_OS_MINOR_VERSION="$(echo "${HIDDIFY_OS_VERSION_ID}" | cut -d '.' -f 2)"
+}
+
+function hiddify_get_ubuntu_support_tier() {
+    case "${HIDDIFY_OS_MAJOR_VERSION}" in
+        22)
+            echo "maintained"
+        ;;
+        24)
+            echo "supported"
+        ;;
+        26)
+            echo "experimental"
+        ;;
+        *)
+            echo "unsupported"
+        ;;
+    esac
+}
+
+function hiddify_support_matrix() {
+    cat <<'EOF'
+Ubuntu support matrix:
+  22.04: maintained
+  24.04: supported
+  26.04: experimental
+EOF
+}
+
+function hiddify_probe_url() {
+    local url="$1"
+    curl --silent --show-error --location --head --fail "$url" >/dev/null 2>&1
+}
+
+function hiddify_require_command() {
+    local command_name="$1"
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        error "Required command '$command_name' is not available."
+        return 1
+    fi
+}
+
+function hiddify_get_apt_candidate() {
+    local package_name="$1"
+    apt-cache policy "$package_name" 2>/dev/null | awk '/Candidate:/ {print $2; exit}'
+}
+
+function hiddify_assert_apt_candidate() {
+    local package_name="$1"
+    local candidate
+    candidate=$(hiddify_get_apt_candidate "$package_name")
+
+    if [[ -z "$candidate" || "$candidate" == "(none)" ]]; then
+        error "No apt candidate is available for package '$package_name'."
+        return 1
+    fi
+}
+
+function hiddify_extract_major_minor_version() {
+    local version="$1"
+    echo "$version" | sed -E 's/^([0-9]+\.[0-9]+).*/\1/'
+}
+
+function hiddify_get_nginx_repo_url() {
+    echo "https://nginx.org/packages/ubuntu/dists/${HIDDIFY_OS_VERSION_CODENAME}/Release"
+}
+
+function hiddify_assert_nginx_repo_supported() {
+    local repo_url
+    repo_url=$(hiddify_get_nginx_repo_url)
+
+    if ! hiddify_probe_url "$repo_url"; then
+        error "The nginx upstream repository does not currently publish Ubuntu ${HIDDIFY_OS_VERSION_ID} (${HIDDIFY_OS_VERSION_CODENAME}). Checked: $repo_url"
+        return 1
+    fi
+}
+
+function hiddify_get_haproxy_minimum_branch() {
+    echo "3.0"
+}
+
+function hiddify_get_haproxy_preferred_ppa_branch() {
+    case "${HIDDIFY_OS_VERSION_CODENAME}" in
+        jammy)
+            echo "3.0"
+        ;;
+        noble|resolute)
+            echo "3.3"
+        ;;
+        *)
+            echo ""
+        ;;
+    esac
+}
+
+function hiddify_get_haproxy_ppa_url() {
+    local ppa_branch="$1"
+    echo "https://ppa.launchpadcontent.net/vbernat/haproxy-${ppa_branch}/ubuntu/dists/${HIDDIFY_OS_VERSION_CODENAME}/Release"
+}
+
+function hiddify_assert_haproxy_ppa_supported() {
+    local ppa_branch="$1"
+    local repo_url
+
+    if [[ -z "$ppa_branch" ]]; then
+        error "No supported HAProxy PPA mapping is defined for Ubuntu ${HIDDIFY_OS_VERSION_ID} (${HIDDIFY_OS_VERSION_CODENAME})."
+        return 1
+    fi
+
+    repo_url=$(hiddify_get_haproxy_ppa_url "$ppa_branch")
+    if ! hiddify_probe_url "$repo_url"; then
+        error "The HAProxy PPA branch ${ppa_branch} is not available for Ubuntu ${HIDDIFY_OS_VERSION_ID} (${HIDDIFY_OS_VERSION_CODENAME}). Checked: $repo_url"
+        return 1
+    fi
+}
+
+function hiddify_haproxy_distro_candidate_satisfies_minimum() {
+    local candidate_version="$1"
+    local minimum_branch="$2"
+    local candidate_branch
+
+    if [[ -z "$candidate_version" || "$candidate_version" == "(none)" ]]; then
+        return 1
+    fi
+
+    candidate_branch=$(hiddify_extract_major_minor_version "$candidate_version")
+    [[ "$(vercomp "$candidate_branch" "$minimum_branch")" != "2" ]]
+}
+
+function hiddify_resolve_haproxy_source() {
+    local minimum_branch
+    local distro_candidate
+    local distro_branch
+    local ppa_branch
+
+    minimum_branch=$(hiddify_get_haproxy_minimum_branch)
+    distro_candidate=$(hiddify_get_apt_candidate "haproxy")
+
+    if hiddify_haproxy_distro_candidate_satisfies_minimum "$distro_candidate" "$minimum_branch"; then
+        distro_branch=$(hiddify_extract_major_minor_version "$distro_candidate")
+        echo "distro|${distro_branch}"
+        return 0
+    fi
+
+    ppa_branch=$(hiddify_get_haproxy_preferred_ppa_branch)
+    hiddify_assert_haproxy_ppa_supported "$ppa_branch" || return 1
+    echo "ppa|${ppa_branch}"
+}
+
+function hiddify_run_ubuntu_preflight() {
+    local haproxy_source
+    local haproxy_mode
+    local haproxy_branch
+
+    checkOS || return 1
+
+    for command_name in apt-get apt-cache dpkg grep awk sed curl; do
+        hiddify_require_command "$command_name" || return 1
+    done
+
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y >/dev/null || return 1
+
+    for package_name in apt-transport-https ca-certificates curl git jq lsb-release software-properties-common unzip; do
+        hiddify_assert_apt_candidate "$package_name" || return 1
+    done
+
+    hiddify_assert_nginx_repo_supported || return 1
+
+    haproxy_source=$(hiddify_resolve_haproxy_source) || return 1
+    haproxy_mode=$(echo "$haproxy_source" | cut -d'|' -f 1)
+    haproxy_branch=$(echo "$haproxy_source" | cut -d'|' -f 2)
+
+    echo "Preflight checks passed for Ubuntu ${HIDDIFY_OS_VERSION_ID} (${HIDDIFY_OS_VERSION_CODENAME})"
+    echo "Support tier: $(hiddify_get_ubuntu_support_tier)"
+    echo "Nginx repo: $(hiddify_get_nginx_repo_url)"
+    echo "HAProxy source: ${haproxy_mode} (${haproxy_branch})"
+}
+
 function checkOS() {
-    # List of supported distributions
-    #supported_distros=("Ubuntu" "Debian" "Fedora" "CentOS" "Arch")
-    supported_distros=("Ubuntu")
-    # Get the distribution name and version
-    if [[ -f "/etc/os-release" ]]; then
-        source "/etc/os-release"
-        distro_name=$NAME
-        distro_version=$VERSION_ID
-    else
-        echo "Unable to determine distribution."
-        exit 1
+    hiddify_detect_os || return 1
+
+    if [[ "${HIDDIFY_OS_ID}" != "ubuntu" ]]; then
+        error "Your Linux distribution (${HIDDIFY_OS_NAME} ${HIDDIFY_OS_VERSION_ID}) is not currently supported."
+        return 1
     fi
-    # Check if the distribution is supported
-    if [[ " ${supported_distros[@]} " =~ " ${distro_name} " ]]; then
-        echo "Your Linux distribution is ${distro_name} ${distro_version}"
-        : #no-op command
-    else
-        # Print error message in red
-        echo -e "\e[31mYour Linux distribution (${distro_name} ${distro_version}) is not currently supported.\e[0m"
-        exit 1
+
+    if [[ "${HIDDIFY_OS_MAJOR_VERSION}" -lt 22 ]]; then
+        error "This script only works on Ubuntu 22.04 and above."
+        return 1
     fi
-    
-    # This script only works on Ubuntu 22 and above
-    if [ "$(uname)" == "Linux" ]; then
-        version_info=$(lsb_release -rs | cut -d '.' -f 1)
-        # Check if it's Ubuntu and version is below 22
-        if [ "$(lsb_release -is)" == "Ubuntu" ] && [ "$version_info" -lt 22 ]; then
-            echo "This script only works on Ubuntu 22 and above"
-            exit
-        fi
+
+    if [[ "$(hiddify_get_ubuntu_support_tier)" == "unsupported" ]]; then
+        error "Ubuntu ${HIDDIFY_OS_VERSION_ID} (${HIDDIFY_OS_VERSION_CODENAME}) is outside the validated support matrix."
+        hiddify_support_matrix >&2
+        return 1
     fi
+
+    echo "Your Linux distribution is ${HIDDIFY_OS_NAME} ${HIDDIFY_OS_VERSION_ID} (${HIDDIFY_OS_VERSION_CODENAME})"
 }
 function disable_panel_services() {
     # rm /etc/cron.d/hiddify_usage_update

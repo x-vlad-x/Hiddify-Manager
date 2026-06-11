@@ -5,8 +5,9 @@ GREEN='\033[0;32m'
 NOCOLOR='\033[0m'
 
 DEBUG=0
-LXC_CONTAINER_NAME="Hiddify-on-LXC"
-LXC_IMAGE="ubuntu:22.04"
+LXC_CONTAINER_NAME="${LXC_CONTAINER_NAME:-Hiddify-on-LXC}"
+LXC_UBUNTU_VERSION="${LXC_UBUNTU_VERSION:-24.04}"
+LXC_IMAGE="ubuntu:${LXC_UBUNTU_VERSION}"
 
 # You may change any of the variables below, to change the port bound on your public/host IP.
 # However this may cause failure to get SSL certificate.
@@ -14,9 +15,44 @@ HTTP_PORT_ON_HOST=80
 HTTPS_PORT_ON_HOST=443
 DIR_PATH=$(dirname "${BASH_SOURCE[0]}")/
 
-if [ $DEBUG -eq 1 ]; then
-  set -e
-fi
+validate_ubuntu_version() {
+  case "$LXC_UBUNTU_VERSION" in
+    22.04|24.04|26.04)
+      return 0
+    ;;
+    *)
+      echo "Unsupported Ubuntu image version: $LXC_UBUNTU_VERSION"
+      echo "Supported image versions are: 22.04, 24.04, 26.04"
+      exit 1
+    ;;
+  esac
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --ubuntu)
+        LXC_UBUNTU_VERSION="$2"
+        shift 2
+      ;;
+      --container-name)
+        LXC_CONTAINER_NAME="$2"
+        shift 2
+      ;;
+      --debug)
+        DEBUG=1
+        shift
+      ;;
+      *)
+        echo "Unknown argument: $1"
+        echo "Usage: $0 [--ubuntu 22.04|24.04|26.04] [--container-name NAME] [--debug]"
+        exit 1
+      ;;
+    esac
+  done
+
+  LXC_IMAGE="ubuntu:${LXC_UBUNTU_VERSION}"
+}
 
 # Install lxd based on the OS
 install_lxd() {
@@ -69,7 +105,7 @@ install_lxd() {
   fi
 }
 
-# Fetch an Ubuntu 22.04 image and create a container
+# Fetch an Ubuntu image and create a container
 setup_container() {
   # Check if the container already exists
   if ! lxc info $LXC_CONTAINER_NAME &> /dev/null; then
@@ -127,6 +163,13 @@ else
   echo "LXD already installed."
 fi
 
+parse_args "$@"
+validate_ubuntu_version
+
+if [ $DEBUG -eq 1 ]; then
+  set -e
+fi
+
 if lxd init --dump | grep "networks: \[\]" &> /dev/null; then
   echo "Initializing LXD minimally..."
   lxd init --minimal
@@ -145,4 +188,3 @@ echo -e "\n\nIf you need TUI or shell for your container try:"
 echo "${GREEN}lxc shell $LXC_CONTAINER_NAME${NOCOLOR}"
 
 echo -e "${RED}WARNING!${NOCOLOR}\nCurrently your LXC container has no open ports on your host OS. For container ports to be seen you need to run ${GREEN}bash ${DIR_PATH}utils/lxc_ports_to_host.sh${NOCOLOR} each time that a new port is used by Hiddify Manager inside the container."
-

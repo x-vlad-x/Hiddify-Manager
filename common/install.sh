@@ -19,7 +19,7 @@ usermod -aG hiddify-common root
 #echo "nameserver 8.8.8.8" >/etc/resolvconf/resolv.conf.d/base
 #echo "nameserver 1.1.1.1" >>/etc/resolvconf/resolv.conf.d/base
 #resolvconf -u
-sudo systemctl unmask --now systemd-resolved.service
+sudo systemctl unmask systemd-resolved.service >/dev/null 2>&1 || true
 systemctl enable --now systemd-resolved >/dev/null 2>&1
 
 # install requirements for change_dns.py
@@ -75,7 +75,9 @@ bash google-bbr.sh > /dev/null
 
 
 echo "@reboot root /opt/hiddify-manager/install.sh --no-gui --no-log >> /opt/hiddify-manager/log/system/reboot.log 2>&1" >/etc/cron.d/hiddify_reinstall_on_reboot
-mv /etc/cron.d/hiddify_daily_memory_release /etc/cron.d/hiddify_daily
+if [ -f /etc/cron.d/hiddify_daily_memory_release ]; then
+  mv /etc/cron.d/hiddify_daily_memory_release /etc/cron.d/hiddify_daily
+fi
 echo "@daily root /opt/hiddify-manager/common/daily_actions.sh >> /opt/hiddify-manager/log/system/daily_actions.log 2>&1" >/etc/cron.d/hiddify_daily
 service cron reload
 

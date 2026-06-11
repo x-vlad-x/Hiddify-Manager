@@ -40,7 +40,7 @@ variable "image_operating_system" {
   default = "Canonical Ubuntu"
 }
 variable "image_operating_system_version" {
-  default = "22.04"
+  default = "24.04"
 }
 variable "instance_visibility" {
   default = "Public"
