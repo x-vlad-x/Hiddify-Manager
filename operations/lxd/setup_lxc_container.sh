@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NOCOLOR='\033[0m'
@@ -13,6 +15,7 @@ LXC_IMAGE="ubuntu:22.04"
 HTTP_PORT_ON_HOST=80
 HTTPS_PORT_ON_HOST=443
 DIR_PATH=$(dirname "${BASH_SOURCE[0]}")/
+REPO_ROOT="$(cd "${DIR_PATH}/../.." && pwd)"
 
 if [ $DEBUG -eq 1 ]; then
   set -e
@@ -82,15 +85,23 @@ setup_container() {
     lxc config device add $LXC_CONTAINER_NAME https    proxy   listen=tcp:0.0.0.0:$HTTPS_PORT_ON_HOST connect=tcp:127.0.0.1:443
     lxc config device add $LXC_CONTAINER_NAME httpsudp         proxy   listen=udp:0.0.0.0:$HTTPS_PORT_ON_HOST connect=udp:127.0.0.1:443
 
-    # Install necessary packages and run the setup script in the container
-    lxc exec $LXC_CONTAINER_NAME -- apt-get update
-    lxc exec $LXC_CONTAINER_NAME -- apt-get install -y apt-transport-https ca-certificates curl wget gnupg-agent software-properties-common git jq
-  
+    configure_container_dns
+    verify_container_dns
+
+    configure_container_apt
+    wait_for_container_apt
+    sync_repo_into_container
+
     if [ $DEBUG -eq 1 ]; then
-      lxc exec $LXC_CONTAINER_NAME -- bash -x -c "cd /opt && export CREATE_EASYSETUP_LINK='true'; sleep 5; curl https://i.hiddify.com/release|bash -x -s -- --no-gui; exit 0"
+      lxc exec $LXC_CONTAINER_NAME -- bash -x -lc "cd /opt/hiddify-manager && export CREATE_EASYSETUP_LINK='true'; bash install.sh --no-gui"
     else
-      lxc exec $LXC_CONTAINER_NAME -- bash -c "cd /opt && export CREATE_EASYSETUP_LINK='true'; sleep 5;curl https://i.hiddify.com/release|bash -s -- --no-gui; exit 0"
+      lxc exec $LXC_CONTAINER_NAME -- bash -lc "cd /opt/hiddify-manager && export CREATE_EASYSETUP_LINK='true'; bash install.sh --no-gui"
     fi
+
+    lxc exec "$LXC_CONTAINER_NAME" -- bash -lc '
+      test -f /opt/hiddify-manager/current.json
+      test -d /opt/hiddify-manager/log/system
+    '
   else
     echo -e "Container $LXC_CONTAINER_NAME already exists.\n"
     echo "1. If you want to remap your Hiddify Manager's container ports to your pubic IP use the command:"
@@ -108,6 +119,80 @@ verify_container() {
   else
     echo "Failed to start container $LXC_CONTAINER_NAME."
     exit 1
+  fi
+}
+
+configure_container_dns() {
+  lxc exec "$LXC_CONTAINER_NAME" -- bash -lc '
+    cat >/etc/resolv.conf <<EOF
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+  '
+}
+
+verify_container_dns() {
+  lxc exec "$LXC_CONTAINER_NAME" -- bash -lc '
+    for host in archive.ubuntu.com security.ubuntu.com github.com; do
+      getent hosts "$host" >/dev/null 2>&1 && continue
+      echo "Failed to resolve $host inside LXD container." >&2
+      exit 1
+    done
+  '
+}
+
+configure_container_apt() {
+  lxc exec "$LXC_CONTAINER_NAME" -- bash -lc '
+    cat >/etc/apt/apt.conf.d/99force-ipv4 <<EOF
+Acquire::ForceIPv4 "true";
+Acquire::Retries "5";
+EOF
+  '
+}
+
+wait_for_container_apt() {
+  lxc exec "$LXC_CONTAINER_NAME" -- bash -lc '
+    for attempt in $(seq 1 18); do
+      if apt-get update; then
+        exit 0
+      fi
+
+      echo "Attempt ${attempt}: apt-get update failed, waiting for container network..." >&2
+      sleep 10
+    done
+
+    echo "Container apt network is not ready." >&2
+    ip route >&2 || true
+    exit 1
+  '
+}
+
+sync_repo_into_container() {
+  lxc exec "$LXC_CONTAINER_NAME" -- mkdir -p /opt/hiddify-manager
+  tar \
+    --exclude=.git \
+    --exclude=.github \
+    --exclude='__pycache__' \
+    -C "$REPO_ROOT" \
+    -cf - . | lxc exec "$LXC_CONTAINER_NAME" -- tar -xf - -C /opt/hiddify-manager
+}
+
+ensure_lxd_bridge() {
+  if ! lxc network show lxdbr0 >/dev/null 2>&1; then
+    lxc network create lxdbr0 ipv4.address=auto ipv4.nat=true ipv6.address=none
+  fi
+
+  if lxc profile device get default eth0 type >/dev/null 2>&1; then
+    if lxc profile device get default eth0 nictype >/dev/null 2>&1; then
+      lxc profile device unset default eth0 nictype || true
+    fi
+    if lxc profile device get default eth0 parent >/dev/null 2>&1; then
+      lxc profile device unset default eth0 parent || true
+    fi
+    lxc profile device set default eth0 network lxdbr0
+    lxc profile device set default eth0 name eth0
+  else
+    lxc profile device add default eth0 nic network=lxdbr0 name=eth0
   fi
 }
 
@@ -134,6 +219,8 @@ else
   echo "LXD seems to be already initialized."
 fi
 
+ensure_lxd_bridge
+
 setup_container
 verify_container
 
@@ -145,4 +232,3 @@ echo -e "\n\nIf you need TUI or shell for your container try:"
 echo "${GREEN}lxc shell $LXC_CONTAINER_NAME${NOCOLOR}"
 
 echo -e "${RED}WARNING!${NOCOLOR}\nCurrently your LXC container has no open ports on your host OS. For container ports to be seen you need to run ${GREEN}bash ${DIR_PATH}utils/lxc_ports_to_host.sh${NOCOLOR} each time that a new port is used by Hiddify Manager inside the container."
-
